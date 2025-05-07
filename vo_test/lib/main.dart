@@ -1,64 +1,33 @@
+import 'dart:io';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
+import 'package:image/image.dart' as img;
+import 'package:image_picker/image_picker.dart';
+import 'package:tflite_flutter/tflite_flutter.dart';
+import 'package:flutter/services.dart';
 
-import 'package:flutter/material.dart';
-import 'import_excel.dart';
-import 'db/database_helper.dart';
+void main() {
+  runApp(const MyApp());
+}
 
-
-
-void main() async {
-    WidgetsFlutterBinding.ensureInitialized(); // VERY IMPORTANT
-
-    await importExcelData(); // Safe to call async code now
-
-    runApp(MyApp());
-  }
 class MyApp extends StatelessWidget {
-
-  final dbHelper = DatabaseHelper();
-
+  const MyApp({super.key});
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'SQLite + Excel Demo',
-      home: Scaffold(
-        appBar: AppBar(title: Text('Product DB Viewer')),
-        body: FutureBuilder<List<Map<String, dynamic>>>(
-          future: dbHelper.getAllProducts(),
-          builder: (context, snapshot) {
-            if (!snapshot.hasData) return Center(child: CircularProgressIndicator());
-
-            final products = snapshot.data!;
-            return ListView.builder(
-              itemCount: products.length,
-              itemBuilder: (context, index) {
-                final item = products[index];
-                return ListTile(
-                  title: Text(item['product']),
-                  subtitle: Text('PNC: ${item['pnc']}'),
-                );
-              },
-            );
-          },
-        ),
+      title: 'Flutter Image Classification App',
+      theme: ThemeData(
+        colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
+        useMaterial3: true,
       ),
+      home: const MyHomePage(title: 'Virtual Operator App'),
     );
   }
 }
 
 class MyHomePage extends StatefulWidget {
   const MyHomePage({super.key, required this.title});
-
-  // This widget is the home page of your application. It is stateful, meaning
-  // that it has a State object (defined below) that contains fields that affect
-  // how it looks.
-
-  // This class is the configuration for the state. It holds the values (in this
-  // case the title) provided by the parent (in this case the App widget) and
-  // used by the build method of the State. Fields in a Widget subclass are
-  // always marked "final".
-
   final String title;
 
   @override
@@ -66,69 +35,156 @@ class MyHomePage extends StatefulWidget {
 }
 
 class _MyHomePageState extends State<MyHomePage> {
-  int _counter = 0;
+  final TextEditingController barcodeController = TextEditingController();
+  String scannedBarcode = "";
+  XFile? capturedImage;
+  String? predictionResult;
+  late Interpreter interpreter;
+  late List<String> classLabels;
+  late List<int> inputShape;
+  late TensorType inputType;
 
-  void _incrementCounter() {
+  @override
+  void initState() {
+    super.initState();
+    loadModelAndLabels();
+  }
+
+  Future<void> loadModelAndLabels() async {
+    try {
+      interpreter = await Interpreter.fromAsset('assets/inception_model_quantized.tflite');
+
+      inputShape = interpreter.getInputTensor(0).shape;
+      inputType = interpreter.getInputTensor(0).type;
+
+      print("Model loaded!");
+      print("Input shape: $inputShape"); // Expect [1, height, width, 3]
+      print("Input type: $inputType");   // TensorType.uint8 or TensorType.float32
+
+      // Load labels from assets/labels.txt
+      final labelsData = await rootBundle.loadString('assets/inception.txt');
+      classLabels = labelsData.split('\n').where((l) => l.trim().isNotEmpty).toList();
+
+      print("Labels loaded: ${classLabels.length} classes");
+    } catch (e) {
+      print("Failed to load model or labels: $e");
+    }
+  }
+
+  Future<void> openCamera() async {
+    final picker = ImagePicker();
+    final image = await picker.pickImage(source: ImageSource.camera);
+    if (image != null) {
+      setState(() {
+        capturedImage = image;
+      });
+      classifyImage(image);
+    }
+  }
+
+  Future<void> selectImage() async {
+    final picker = ImagePicker();
+    final image = await picker.pickImage(source: ImageSource.gallery);
+    if (image != null) {
+      setState(() {
+        capturedImage = image;
+      });
+      classifyImage(image);
+    }
+  }
+
+  Future<void> classifyImage(XFile imageFile) async {
+    if (interpreter == null) return;
+
+    final tensorInput = await preprocessImage(File(imageFile.path));
+
+    // Output shape usually [1, num_classes]
+    var output = List.filled(classLabels.length, 0.0).reshape([1, classLabels.length]);
+
+    interpreter.run(tensorInput, output);
+
+    print("Raw output: $output");
+
+    final List<double> probabilities = List<double>.from(output[0]);
+    final predictedIndex = probabilities.indexOf(probabilities.reduce((a, b) => a > b ? a : b));
+
     setState(() {
-      // This call to setState tells the Flutter framework that something has
-      // changed in this State, which causes it to rerun the build method below
-      // so that the display can reflect the updated values. If we changed
-      // _counter without calling setState(), then the build method would not be
-      // called again, and so nothing would appear to happen.
-      _counter++;
+      predictionResult = "Prediction: ${classLabels[predictedIndex]} (Index $predictedIndex)";
     });
+  }
+
+  Future<List<List<List<List<num>>>>> preprocessImage(File imageFile) async {
+    final bytes = await imageFile.readAsBytes();
+    final image = img.decodeImage(bytes);
+    if (image == null) throw Exception("Cannot decode image");
+
+    final height = inputShape[1];
+    final width = inputShape[2];
+
+    final resized = img.copyResize(image, width: width, height: height);
+
+    // Create a 4D tensor [1, height, width, 3]
+    final imageTensor = List.generate(height, (y) {
+      return List.generate(width, (x) {
+        final pixel = resized.getPixel(x, y);
+        final r = pixel.r;
+        final g = pixel.g;
+        final b = pixel.b;
+
+        if (inputType == TensorType.uint8) {
+          return [r, g, b];
+        } else {
+          return [r / 255.0, g / 255.0, b / 255.0];
+        }
+      });
+    });
+
+    return [imageTensor];
   }
 
   @override
   Widget build(BuildContext context) {
-    // This method is rerun every time setState is called, for instance as done
-    // by the _incrementCounter method above.
-    //
-    // The Flutter framework has been optimized to make rerunning build methods
-    // fast, so that you can just rebuild anything that needs updating rather
-    // than having to individually change instances of widgets.
     return Scaffold(
-      appBar: AppBar(
-        // TRY THIS: Try changing the color here to a specific color (to
-        // Colors.amber, perhaps?) and trigger a hot reload to see the AppBar
-        // change color while the other colors stay the same.
-        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
-        // Here we take the value from the MyHomePage object that was created by
-        // the App.build method, and use it to set our appbar title.
-        title: Text(widget.title),
-      ),
+      appBar: AppBar(title: Text(widget.title)),
       body: Center(
-        // Center is a layout widget. It takes a single child and positions it
-        // in the middle of the parent.
-        child: Column(
-          // Column is also a layout widget. It takes a list of children and
-          // arranges them vertically. By default, it sizes itself to fit its
-          // children horizontally, and tries to be as tall as its parent.
-          //
-          // Column has various properties to control how it sizes itself and
-          // how it positions its children. Here we use mainAxisAlignment to
-          // center the children vertically; the main axis here is the vertical
-          // axis because Columns are vertical (the cross axis would be
-          // horizontal).
-          //
-          // TRY THIS: Invoke "debug painting" (choose the "Toggle Debug Paint"
-          // action in the IDE, or press "p" in the console), to see the
-          // wireframe for each widget.
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: <Widget>[
-            const Text('You have pushed the button this many times:'),
-            Text(
-              '$_counter',
-              style: Theme.of(context).textTheme.headlineMedium,
-            ),
-          ],
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            children: [
+              TextField(
+                controller: barcodeController,
+                decoration: const InputDecoration(
+                  labelText: 'Scan a barcode here',
+                  border: OutlineInputBorder(),
+                ),
+                onSubmitted: (value) {
+                  if (value.isNotEmpty) {
+                    setState(() {
+                      scannedBarcode = value;
+                    });
+                    openCamera();
+                  }
+                },
+              ),
+              const SizedBox(height: 20),
+              if (scannedBarcode.isNotEmpty)
+                Text("Scanned Barcode: $scannedBarcode", style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 20),
+              if (capturedImage != null)
+                Image.file(File(capturedImage!.path), width: 200, height: 200),
+              const SizedBox(height: 20),
+              if (predictionResult != null)
+                Text(predictionResult!, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 20),
+              ElevatedButton(
+                onPressed: selectImage,
+                child: const Text('Select Image from Gallery'),
+              ),
+              const Divider(height: 40),
+            ],
+          ),
         ),
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _incrementCounter,
-        tooltip: 'Increment',
-        child: const Icon(Icons.add),
-      ), // This trailing comma makes auto-formatting nicer for build methods.
     );
   }
 }
