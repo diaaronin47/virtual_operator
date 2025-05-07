@@ -28,6 +28,7 @@ class MyApp extends StatelessWidget {
 
 class MyHomePage extends StatefulWidget {
   const MyHomePage({super.key, required this.title});
+
   final String title;
 
   @override
@@ -39,6 +40,36 @@ class _MyHomePageState extends State<MyHomePage> {
   String scannedBarcode = "";
   XFile? capturedImage;
   String? predictionResult;
+  final List<Map<String, String>> products = [
+    {'id': 'hero', 'name': 'Hero Water Heater'},
+    {'id': 'hero_plus', 'name': 'Hero Plus Water Heater'},
+    {'id': 'hero_turbo', 'name': 'Hero Turbo Water Heater'},
+    // ... add the rest of your 75 items here
+  ];
+  void compareWithBarcode() {
+    if (predictionResult == null || scannedBarcode.isEmpty) {
+      print("⛔ No prediction or barcode to compare.");
+      return;
+    }
+
+    // Extract the predicted ID from the predictionResult string
+    final predictedId = classLabels.firstWhere(
+          (label) => predictionResult!.toLowerCase().contains(label.toLowerCase()),
+      orElse: () => 'unknown',
+    );
+
+    final product = products.firstWhere(
+          (p) => p['id'] == predictedId,
+      orElse: () => {'id': 'unknown', 'name': 'Unknown Product'},
+    );
+
+    final isMatch = product['name']!.toLowerCase().trim() == scannedBarcode.toLowerCase().trim();
+
+    print(isMatch
+        ? '✅ Match: ${product['name']}'
+        : '❌ Mismatch! Predicted: ${product['name']}, Barcode: $scannedBarcode');
+  }
+
   late Interpreter interpreter;
   late List<String> classLabels;
   late List<int> inputShape;
@@ -111,6 +142,8 @@ class _MyHomePageState extends State<MyHomePage> {
     setState(() {
       predictionResult = "Prediction: ${classLabels[predictedIndex]} (Index $predictedIndex)";
     });
+    compareWithBarcode();
+
   }
 
   Future<List<List<List<List<num>>>>> preprocessImage(File imageFile) async {
