@@ -44,7 +44,8 @@ class _MyHomePageState extends State<MyHomePage> {
     {'id': 'hero', 'name': 'Hero Water Heater'},
     {'id': 'hero_plus', 'name': 'Hero Plus Water Heater'},
     {'id': 'hero_turbo', 'name': 'Hero Turbo Water Heater'},
-    // ... add the rest of your 75 items here
+    //
+    //... add the rest of your 75 items here
   ];
   void compareWithBarcode() {
     if (predictionResult == null || scannedBarcode.isEmpty) {
