@@ -1,3 +1,5 @@
 Hero
 Hero Plus
 Hero Turbo
+Hero Lite
+Termo Smart
