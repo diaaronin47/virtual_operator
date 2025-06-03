@@ -46,6 +46,7 @@ dependencies:
   tflite: ^1.1.2
   tflite_flutter: ^0.11.0
   image: ^4.3.0
+  mssql_connection: ^2.0.0
 
 
 dev_dependencies:
@@ -71,9 +72,9 @@ flutter:
   uses-material-design: true
   assets:
     - lib/assets/Neptune PNCs.xlsx
-    - lib/assets/Efficientnet(acc0.9962).tflite
+    - lib/assets/EfficientNet(99.42 - 5 classes).tflite
     - lib/assets/inception.txt
-    - lib/assets/inception_model_quantized.tflite
+    - lib/assets/Inception(96.31 - 5 classes).tflite
   # To add assets to your application, add an assets section, like this:
   # assets:
   #   - images/a_dot_burr.jpeg
