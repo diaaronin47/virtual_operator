@@ -1,11 +1,10 @@
 import 'dart:io';
-import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:image/image.dart' as img;
 import 'package:image_picker/image_picker.dart';
 import 'package:tflite_flutter/tflite_flutter.dart';
 import 'package:flutter/services.dart';
-import 'package:mssql_connection/mssql_connection.dart';
+import 'LoginPage.dart';
 
 void main() {
   runApp(const MyApp());
@@ -22,14 +21,13 @@ class MyApp extends StatelessWidget {
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
         useMaterial3: true,
       ),
-      home: const MyHomePage(title: 'Virtual Operator App'),
+      home: const LoginPage(),
     );
   }
 }
 
 class MyHomePage extends StatefulWidget {
   const MyHomePage({super.key, required this.title});
-
   final String title;
 
   @override
@@ -39,43 +37,23 @@ class MyHomePage extends StatefulWidget {
 class _MyHomePageState extends State<MyHomePage> {
   final TextEditingController barcodeController = TextEditingController();
   String scannedBarcode = "";
+  String pnc = "";
   XFile? capturedImage;
   String? predictionResult;
-  final List<Map<String, String>> products = [
-    {'id': 'hero', 'name': 'Hero Water Heater'},
-    {'id': 'hero_plus', 'name': 'Hero Plus Water Heater'},
-    {'id': 'hero_turbo', 'name': 'Hero Turbo Water Heater'},
-    //
-    //... add the rest of your 75 items here
-  ];
-  void compareWithBarcode() {
-    if (predictionResult == null || scannedBarcode.isEmpty) {
-      print("⛔ No prediction or barcode to compare.");
-      return;
-    }
-
-    // Extract the predicted ID from the predictionResult string
-    final predictedId = classLabels.firstWhere(
-          (label) => predictionResult!.toLowerCase().contains(label.toLowerCase()),
-      orElse: () => 'unknown',
-    );
-
-    final product = products.firstWhere(
-          (p) => p['id'] == predictedId,
-      orElse: () => {'id': 'unknown', 'name': 'Unknown Product'},
-    );
-
-    final isMatch = product['name']!.toLowerCase().trim() == scannedBarcode.toLowerCase().trim();
-
-    print(isMatch
-        ? '✅ Match: ${product['name']}'
-        : '❌ Mismatch! Predicted: ${product['name']}, Barcode: $scannedBarcode');
-  }
-
   late Interpreter interpreter;
   late List<String> classLabels;
   late List<int> inputShape;
   late TensorType inputType;
+
+  List<Map<String, String>> DefaultPNCsOfModel = [
+    {'pnc': '945105411', 'label': 'Hero'},
+    {'pnc': '945105412', 'label': 'Hero Plus'},
+    {'pnc': '945105413', 'label': 'Hero Plus'},
+    {'pnc': '945105436', 'label': 'Hero Turbo'},
+    {'pnc': '945105437', 'label': 'Hero Turbo'},
+    {'pnc': '945105438', 'label': 'Hero Turbo'},
+    {'pnc': '945105439', 'label': 'Hero Turbo'}
+  ];
 
   @override
   void initState() {
@@ -85,18 +63,20 @@ class _MyHomePageState extends State<MyHomePage> {
 
   Future<void> loadModelAndLabels() async {
     try {
-      interpreter = await Interpreter.fromAsset('assets/inception_model_quantized.tflite');
-
+      interpreter = await Interpreter.fromAsset('assets/efficientNet98_quantized98.tflite');
       inputShape = interpreter.getInputTensor(0).shape;
       inputType = interpreter.getInputTensor(0).type;
-
       print("Model loaded!");
-      print("Input shape: $inputShape"); // Expect [1, height, width, 3]
-      print("Input type: $inputType");   // TensorType.uint8 or TensorType.float32
+      print("Input shape: $inputShape"); // Should be [1, 224, 224, 3]
+      print("Input type: $inputType");
 
-      // Load labels from assets/labels.txt
+      // Load 5-class labels
       final labelsData = await rootBundle.loadString('assets/inception.txt');
       classLabels = labelsData.split('\n').where((l) => l.trim().isNotEmpty).toList();
+
+      if (classLabels.length != 5) {
+        throw Exception("Expected 5 labels, found ${classLabels.length}");
+      }
 
       print("Labels loaded: ${classLabels.length} classes");
     } catch (e) {
@@ -127,13 +107,9 @@ class _MyHomePageState extends State<MyHomePage> {
   }
 
   Future<void> classifyImage(XFile imageFile) async {
-    if (interpreter == null) return;
-
     final tensorInput = await preprocessImage(File(imageFile.path));
 
-    // Output shape usually [1, num_classes]
-    var output = List.filled(classLabels.length, 0.0).reshape([1, classLabels.length]);
-
+    var output = List.filled(5, 0.0).reshape([1, 5]); // 5 output classes
     interpreter.run(tensorInput, output);
 
     print("Raw output: $output");
@@ -142,10 +118,8 @@ class _MyHomePageState extends State<MyHomePage> {
     final predictedIndex = probabilities.indexOf(probabilities.reduce((a, b) => a > b ? a : b));
 
     setState(() {
-      predictionResult = "Prediction: ${classLabels[predictedIndex]} (Index $predictedIndex)";
+      predictionResult = classLabels[predictedIndex];
     });
-    compareWithBarcode();
-
   }
 
   Future<List<List<List<List<num>>>>> preprocessImage(File imageFile) async {
@@ -153,12 +127,11 @@ class _MyHomePageState extends State<MyHomePage> {
     final image = img.decodeImage(bytes);
     if (image == null) throw Exception("Cannot decode image");
 
-    final height = inputShape[1];
-    final width = inputShape[2];
+    final height = 224;
+    final width = 224;
 
     final resized = img.copyResize(image, width: width, height: height);
 
-    // Create a 4D tensor [1, height, width, 3]
     final imageTensor = List.generate(height, (y) {
       return List.generate(width, (x) {
         final pixel = resized.getPixel(x, y);
@@ -175,6 +148,15 @@ class _MyHomePageState extends State<MyHomePage> {
     });
 
     return [imageTensor];
+  }
+
+  String? comparePncs(String extractedPnc) {
+    for (var entry in DefaultPNCsOfModel) {
+      if (entry['pnc'] == extractedPnc) {
+        return entry['label'];
+      }
+    }
+    return "No matching label found";
   }
 
   @override
@@ -196,6 +178,7 @@ class _MyHomePageState extends State<MyHomePage> {
                   if (value.isNotEmpty) {
                     setState(() {
                       scannedBarcode = value;
+                      pnc = scannedBarcode.substring(3, 12);
                     });
                     openCamera();
                   }
@@ -203,14 +186,41 @@ class _MyHomePageState extends State<MyHomePage> {
               ),
               const SizedBox(height: 20),
               if (scannedBarcode.isNotEmpty)
-                Text("Scanned Barcode: $scannedBarcode", style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                Text("Scanned Barcode: $scannedBarcode",
+                    style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 20),
+              if (pnc.isNotEmpty)
+                Text("Extracted PNC: $pnc",
+                    style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
               const SizedBox(height: 20),
               if (capturedImage != null)
                 Image.file(File(capturedImage!.path), width: 200, height: 200),
               const SizedBox(height: 20),
               if (predictionResult != null)
-                Text(predictionResult!, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                Text("Predicted Label: $predictionResult",
+                    style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
               const SizedBox(height: 20),
+              if (pnc.isNotEmpty) ...[
+                Text("Mapped Label: ${comparePncs(pnc)}",
+                    style: const TextStyle(fontSize: 16)),
+                Builder(builder: (_) {
+                  String? mapped = comparePncs(pnc);
+                  if (mapped != null &&
+                      mapped.trim().toLowerCase() == predictionResult?.trim().toLowerCase()) {
+                    return const Text("Matching PNCs",
+                        style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.green));
+                  } else {
+                    return const Text("No Match Found",
+                        style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.red));
+                  }
+                }),
+              ],
               ElevatedButton(
                 onPressed: selectImage,
                 child: const Text('Select Image from Gallery'),
