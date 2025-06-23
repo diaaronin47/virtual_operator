@@ -17,6 +17,14 @@ class DatabaseHelper {
     return _database!;
   }
 
+  Future<List<Map<String, dynamic>>> getLogs() async {
+    final db = await database;
+    return await db.query(
+      'logs',
+      orderBy: 'timestamp DESC',
+    );
+  }
+
   Future<Database> _initDB(String fileName) async {
     Directory documentsDir = await getApplicationDocumentsDirectory();
     String path = join(documentsDir.path, fileName);
@@ -32,23 +40,93 @@ class DatabaseHelper {
     await db.execute('''
       CREATE TABLE products (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        PNC TEXT,
-        Product TEXT
-      )
-    ''');
+        pnc TEXT NOT NULL,
+        productName TEXT NOT NULL
+      )'''
+    );
+    await db.execute('''
+      CREATE TABLE logs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      barcode TEXT,
+      pnc TEXT,
+      predictedLabel TEXT,
+      mappedLabel TEXT,
+      timestamp TEXT
+      )'''
+    );
+
   }
 
-  Future<void> insertProduct(String pnc, String product) async {
+  /// Insert a new product
+  Future<void> insertProduct(String pnc, String productName) async {
     final db = await database;
     await db.insert(
       'products',
-      {'PNC': pnc, 'Product': product},
+      {
+        'pnc': pnc,
+        'productName': productName,
+      },
       conflictAlgorithm: ConflictAlgorithm.replace,
     );
   }
 
+  /// Get all products
   Future<List<Map<String, dynamic>>> getAllProducts() async {
     final db = await database;
     return await db.query('products');
+  }
+  Future<void> insertLog({
+    required String barcode,
+    required String pnc,
+    required String predictedLabel,
+    required String mappedLabel,
+  }) async {
+    final db = await database;
+    await db.insert(
+      'logs',
+      {
+        'barcode': barcode,
+        'pnc': pnc,
+        'predictedLabel': predictedLabel,
+        'mappedLabel': mappedLabel,
+        'timestamp': DateTime.now().toIso8601String(),
+      },
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
+  /// Get a product by PNC
+  Future<String?> getProductByPnc(String pnc) async {
+    final db = await database;
+    final result = await db.query(
+      'products',
+      where: 'pnc = ?',
+      whereArgs: [pnc],
+    );
+    if (result.isNotEmpty) {
+      return result.first['productName'] as String;
+    }
+    return null;
+  }
+
+  /// Update a product name by PNC
+  Future<void> updateProduct(String pnc, String newProductName) async {
+    final db = await database;
+    await db.update(
+      'products',
+      {'productName': newProductName},
+      where: 'pnc = ?',
+      whereArgs: [pnc],
+    );
+  }
+
+  /// Delete a product by PNC
+  Future<void> deleteProduct(String pnc) async {
+    final db = await database;
+    await db.delete(
+      'products',
+      where: 'pnc = ?',
+      whereArgs: [pnc],
+    );
   }
 }

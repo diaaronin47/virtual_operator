@@ -5,6 +5,8 @@ import 'package:image_picker/image_picker.dart';
 import 'package:tflite_flutter/tflite_flutter.dart';
 import 'package:flutter/services.dart';
 import 'LoginPage.dart';
+import 'db/database_helper.dart';
+
 
 void main() {
   runApp(const MyApp());
@@ -120,6 +122,19 @@ class _MyHomePageState extends State<MyHomePage> {
     setState(() {
       predictionResult = classLabels[predictedIndex];
     });
+
+// Log to database
+    final mappedLabel = comparePncs(pnc) ?? 'Unknown';
+    final dbHelper = DatabaseHelper();
+
+    await dbHelper.insertLog(
+      barcode: scannedBarcode,
+      pnc: pnc,
+      predictedLabel: predictionResult!,
+      mappedLabel: mappedLabel,
+    );
+
+
   }
 
   Future<List<List<List<List<num>>>>> preprocessImage(File imageFile) async {
@@ -226,6 +241,33 @@ class _MyHomePageState extends State<MyHomePage> {
                 child: const Text('Select Image from Gallery'),
               ),
               const Divider(height: 40),
+              ElevatedButton(
+                onPressed: () async {
+                  final logs = await DatabaseHelper().getLogs();
+                  showDialog(
+                    context: context,
+                    builder: (_) => AlertDialog(
+                      title: Text("Classification Logs"),
+                      content: SizedBox(
+                        width: double.maxFinite,
+                        child: ListView.builder(
+                          shrinkWrap: true,
+                          itemCount: logs.length,
+                          itemBuilder: (_, index) {
+                            final log = logs[index];
+                            return ListTile(
+                              title: Text("Barcode: ${log['barcode']}"),
+                              subtitle: Text("Predicted: ${log['predicted_label']}, Mapped: ${log['mapped_label']}"),
+                            );
+                          },
+                        ),
+                      ),
+                    ),
+                  );
+                },
+                child: const Text('View Log History'),
+              ),
+
             ],
           ),
         ),
