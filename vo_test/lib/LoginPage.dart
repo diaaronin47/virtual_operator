@@ -1,5 +1,3 @@
-
-import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
 import '../../main.dart';
@@ -25,7 +23,7 @@ class _LoginPageState extends State<LoginPage> {
         context,
         MaterialPageRoute(
             builder: (context) =>
-            const MyHomePage(title: "Virtual Operator App")),
+                const MyHomePage(title: "Virtual Operator App")),
       );
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
