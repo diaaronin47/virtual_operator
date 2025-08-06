@@ -39,7 +39,7 @@ public class MainActivity extends FlutterActivity {
             Class.forName("com.microsoft.sqlserver.jdbc.SQLServerDriver");
 
             // Replace with your actual SQL Server connection string
-            String url = "jdbc:sqlserver://192.168.0.100:1433;databaseName=YourDB;user=sa;password=yourpassword;encrypt=false;";
+            String url = "jdbc:sqlserver://10.193.106.35:1433;databaseName=Neptune;user=sa;password=Elux2021;encrypt=false;";
             conn = DriverManager.getConnection(url);
             stmt = conn.createStatement();
 
