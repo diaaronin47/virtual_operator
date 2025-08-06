@@ -14,6 +14,9 @@ android {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
     }
+    dependencies {
+        implementation files('libs/mssql-jdbc-<version>.jar')
+    }
 
     kotlinOptions {
         jvmTarget = JavaVersion.VERSION_11.toString()

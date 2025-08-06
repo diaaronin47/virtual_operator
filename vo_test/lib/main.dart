@@ -5,8 +5,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:tflite_flutter/tflite_flutter.dart';
 import 'package:flutter/services.dart';
 import 'LoginPage.dart';
-import 'db/database_helper.dart';
-
+import 'Result.dart';
 
 void main() {
   runApp(const MyApp());
@@ -37,6 +36,8 @@ class MyHomePage extends StatefulWidget {
 }
 
 class _MyHomePageState extends State<MyHomePage> {
+  static const platform = MethodChannel('com.example.sqlserver/channel');
+
   final TextEditingController barcodeController = TextEditingController();
   String scannedBarcode = "";
   String pnc = "";
@@ -69,18 +70,17 @@ class _MyHomePageState extends State<MyHomePage> {
       inputShape = interpreter.getInputTensor(0).shape;
       inputType = interpreter.getInputTensor(0).type;
       print("Model loaded!");
-      print("Input shape: $inputShape"); // Should be [1, 224, 224, 3]
+      print("Input shape: $inputShape");
       print("Input type: $inputType");
 
-      // Load 5-class labels
       final labelsData = await rootBundle.loadString('assets/inception.txt');
       classLabels = labelsData.split('\n').where((l) => l.trim().isNotEmpty).toList();
 
       if (classLabels.length != 5) {
-        throw Exception("Expected 5 labels, found ${classLabels.length}");
+        throw Exception("Expected 5 labels, found \${classLabels.length}");
       }
 
-      print("Labels loaded: ${classLabels.length} classes");
+      print("Labels loaded: \${classLabels.length} classes");
     } catch (e) {
       print("Failed to load model or labels: $e");
     }
@@ -111,10 +111,8 @@ class _MyHomePageState extends State<MyHomePage> {
   Future<void> classifyImage(XFile imageFile) async {
     final tensorInput = await preprocessImage(File(imageFile.path));
 
-    var output = List.filled(5, 0.0).reshape([1, 5]); // 5 output classes
+    var output = List.filled(5, 0.0).reshape([1, 5]);
     interpreter.run(tensorInput, output);
-
-    print("Raw output: $output");
 
     final List<double> probabilities = List<double>.from(output[0]);
     final predictedIndex = probabilities.indexOf(probabilities.reduce((a, b) => a > b ? a : b));
@@ -123,19 +121,27 @@ class _MyHomePageState extends State<MyHomePage> {
       predictionResult = classLabels[predictedIndex];
     });
 
-// Log to database
-    final mappedLabel = comparePncs(pnc) ?? 'Unknown';
-    final dbHelper = DatabaseHelper();
+    // Optional: Insert raw log (can remove if handled later in Result.dart)
+    await platform.invokeMethod('insertLogToSqlServer', {
+      'barcode': scannedBarcode,
+      'pnc': pnc,
+      'predictedLabel': predictionResult,
+      'mappedLabel': comparePncs(pnc) ?? 'Unknown',
+    });
 
-    await dbHelper.insertLog(
-      barcode: scannedBarcode,
-      pnc: pnc,
-      predictedLabel: predictionResult!,
-      mappedLabel: mappedLabel,
+    // ✅ Navigate to Result Page to handle DB lookup and model matching
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) =>
+            MatchResultPage(
+              barcode: scannedBarcode ?? 'UNKNOWN_BARCODE',
+              predictedLabel: predictionResult ?? 'UNKNOWN_MODEL',
+            )
+      ),
     );
-
-
   }
+
 
   Future<List<List<List<List<num>>>>> preprocessImage(File imageFile) async {
     final bytes = await imageFile.readAsBytes();
@@ -240,34 +246,6 @@ class _MyHomePageState extends State<MyHomePage> {
                 onPressed: selectImage,
                 child: const Text('Select Image from Gallery'),
               ),
-              const Divider(height: 40),
-              ElevatedButton(
-                onPressed: () async {
-                  final logs = await DatabaseHelper().getLogs();
-                  showDialog(
-                    context: context,
-                    builder: (_) => AlertDialog(
-                      title: Text("Classification Logs"),
-                      content: SizedBox(
-                        width: double.maxFinite,
-                        child: ListView.builder(
-                          shrinkWrap: true,
-                          itemCount: logs.length,
-                          itemBuilder: (_, index) {
-                            final log = logs[index];
-                            return ListTile(
-                              title: Text("Barcode: ${log['barcode']}"),
-                              subtitle: Text("Predicted: ${log['predicted_label']}, Mapped: ${log['mapped_label']}"),
-                            );
-                          },
-                        ),
-                      ),
-                    ),
-                  );
-                },
-                child: const Text('View Log History'),
-              ),
-
             ],
           ),
         ),
