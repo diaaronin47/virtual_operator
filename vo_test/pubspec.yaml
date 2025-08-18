@@ -43,6 +43,7 @@ dependencies:
   tflite_flutter: ^0.11.0
   image: ^4.3.0
   mssql_connection: ^2.0.0
+  sql_connection: ^1.0.0
 
 
 dev_dependencies:
