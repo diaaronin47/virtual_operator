@@ -6,10 +6,19 @@ import 'package:tflite_flutter/tflite_flutter.dart';
 import 'package:flutter/services.dart';
 import 'LoginPage.dart';
 import 'Result.dart';
+import 'package:sql_connection/sql_connection.dart';
 
 void main() {
   runApp(const MyApp());
 }
+
+var connectionStatus = await sqlConnection.connect(
+        ip: 10.193.106.35,
+        port: 1433,
+        databaseName: Neptune ,
+        username: sa,
+        password: Elux@2025 ,
+        );
 
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
@@ -47,6 +56,7 @@ class _MyHomePageState extends State<MyHomePage> {
   late List<String> classLabels;
   late List<int> inputShape;
   late TensorType inputType;
+  var result = await sqlConnection.queryDatabase('SELECT * FROM db.LabelDesign WHERE PNC = "extracted pnc"');
 
   List<Map<String, String>> DefaultPNCsOfModel = [
     {'pnc': '945105411', 'label': 'Hero'},
