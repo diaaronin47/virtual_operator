@@ -93,8 +93,8 @@ def display_similarities(image1_path, image2_path):
     cv2.destroyAllWindows()
 
 # Example usage:
-image1_path = 'E:/WORK/Virtual Operator/Dataset Draft/Hero Plus/IMG_3113.png'
+image1_path = 'C:/Users/hamdydia/OneDrive - Electrolux/Desktop/thjq4e6jhtq4e.png'
 
-image2_path = 'E:/WORK/Virtual Operator/Dataset Draft/Hero/IMG_3057.png'
+image2_path = 'C:/Users/hamdydia/OneDrive - Electrolux/Desktop/thjq4e6jhtq4e.png'
 
 display_similarities(image1_path, image2_path)
